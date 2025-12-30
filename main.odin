@@ -127,23 +127,11 @@ main :: proc() {
 	rl.SetTargetFPS(60)
 
 	framebuffer_texture := rl.LoadTextureFromImage(
-		{
-			width = cast(i32)width,
-			height = cast(i32)height,
-			data = raw_data(r.framebuffer.data),
-			format = .UNCOMPRESSED_R8G8B8A8,
-			mipmaps = 1,
-		},
+		{width = cast(i32)width, height = cast(i32)height, data = raw_data(r.framebuffer.data), format = .UNCOMPRESSED_R8G8B8A8, mipmaps = 1},
 	)
 
 	depthbuffer_texture := rl.LoadTextureFromImage(
-		{
-			width = cast(i32)width,
-			height = cast(i32)height,
-			data = raw_data(r.depthbuffer.data),
-			format = .UNCOMPRESSED_R8G8B8A8,
-			mipmaps = 1,
-		},
+		{width = cast(i32)width, height = cast(i32)height, data = raw_data(r.depthbuffer.data), format = .UNCOMPRESSED_R8G8B8A8, mipmaps = 1},
 	)
 
 

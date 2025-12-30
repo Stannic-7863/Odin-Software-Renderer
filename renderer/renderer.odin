@@ -203,11 +203,7 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 
 
 		// High precision baby
-		z_values_fixed := Vec3Fixed {
-			Fixed(projected_v1.z * (1 << 23)),
-			Fixed(projected_v2.z * (1 << 23)),
-			Fixed(projected_v3.z * (1 << 23)),
-		}
+		z_values_fixed := Vec3Fixed{Fixed(projected_v1.z * (1 << 23)), Fixed(projected_v2.z * (1 << 23)), Fixed(projected_v3.z * (1 << 23))}
 
 		// screen space mapping
 		space_v1 := Vec2Fixed {
@@ -244,11 +240,7 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 					fixed_div(weights_fixed.z, area_fixed),
 				}
 
-				weights_float := Vec3f32 {
-					fixed_to_f32(weights_normalized.x),
-					fixed_to_f32(weights_normalized.y),
-					fixed_to_f32(weights_normalized.z),
-				}
+				weights_float := Vec3f32{fixed_to_f32(weights_normalized.x), fixed_to_f32(weights_normalized.y), fixed_to_f32(weights_normalized.z)}
 
 				depth :=
 					fixed_mul_frac(fixed_div_frac(weights_fixed.x, area_fixed, 23), z_values_fixed.x, 23) +
