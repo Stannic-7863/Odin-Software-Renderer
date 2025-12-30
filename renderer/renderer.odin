@@ -3,49 +3,12 @@ package software_renderer
 import "base:intrinsics"
 import "base:runtime"
 import "core:math"
+import "core:math/linalg"
 import "core:slice"
-
-FIXED_SCALE :: 8
-Fixed :: distinct i32
-
-Vec2Fixed :: [2]Fixed
-Vec3Fixed :: [3]Fixed
-Vec4Fixed :: [4]Fixed
 
 Vec2f32 :: [2]f32
 Vec3f32 :: [3]f32
 Vec4f32 :: [4]f32
-
-f32_to_fixed :: proc(f: f32) -> Fixed {
-	return Fixed(f * (1 << FIXED_SCALE))
-}
-
-fixed_to_f32 :: proc(f: Fixed) -> f32 {
-	return f32(f) / f32(1 << FIXED_SCALE)
-}
-
-fixed_mul :: proc(a, b: Fixed) -> Fixed {
-	return Fixed(i64(a) * i64(b) >> FIXED_SCALE)
-}
-
-fixed_div :: proc(a, b: Fixed) -> Fixed {
-	if b == 0 do return 0
-	return Fixed((i64(a) << FIXED_SCALE) / i64(b))
-}
-
-fixed_mul_frac :: proc(a, b: Fixed, frac: uint) -> Fixed {
-	return Fixed((i64(a) * i64(b)) >> frac)
-}
-
-fixed_div_frac :: proc(a, b: Fixed, frac: uint) -> Fixed {
-	if b == 0 do return 0
-	return Fixed((i64(a) << frac) / i64(b))
-}
-
-fixed_cross :: proc(a: Vec2Fixed, b: Vec2Fixed) -> Fixed {
-	return fixed_mul(a.x, b.y) - fixed_mul(a.y, b.x)
-}
-
 
 Shader_Data_Type :: union {
 	f32,
@@ -142,7 +105,6 @@ pipeline_set_shader_userdata :: proc(renderer: ^Renderer, pipeline_index: int, v
 
 pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 
-	fb_fixed_size := Vec2Fixed{Fixed(renderer.framebuffer.width << FIXED_SCALE), Fixed(renderer.framebuffer.height << FIXED_SCALE)}
 	fb_float_size := Vec2f32{f32(renderer.framebuffer.width), f32(renderer.framebuffer.height)}
 
 	pipeline := &renderer.pipelines[pipeline_index]
@@ -200,57 +162,32 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 		projected_v3 := clip_v3.xyz / clip_v3.w if clip_v3.w != 0 else clip_v3.xyz
 
 		// TODO Clipping and triangle splitting, for now, ball
-
-
-		// High precision baby
-		z_values_fixed := Vec3Fixed{Fixed(projected_v1.z * (1 << 23)), Fixed(projected_v2.z * (1 << 23)), Fixed(projected_v3.z * (1 << 23))}
+		z_values_fixed := Vec3f32{projected_v1.z, projected_v2.z, projected_v3.z}
 
 		// screen space mapping
-		space_v1 := Vec2Fixed {
-			f32_to_fixed(math.round((projected_v1.x + 1) * 0.5 * fb_float_size.x)),
-			f32_to_fixed(math.round((projected_v1.y + 1) * 0.5 * fb_float_size.y)),
-		}
-		space_v2 := Vec2Fixed {
-			f32_to_fixed(math.round((projected_v2.x + 1) * 0.5 * fb_float_size.x)),
-			f32_to_fixed(math.round((projected_v2.y + 1) * 0.5 * fb_float_size.y)),
-		}
-		space_v3 := Vec2Fixed {
-			f32_to_fixed(math.round((projected_v3.x + 1) * 0.5 * fb_float_size.x)),
-			f32_to_fixed(math.round((projected_v3.y + 1) * 0.5 * fb_float_size.y)),
-		}
+		space_v1 := Vec2f32{(math.round((projected_v1.x + 1) * 0.5 * fb_float_size.x)), (math.round((projected_v1.y + 1) * 0.5 * fb_float_size.y))}
+		space_v2 := Vec2f32{(math.round((projected_v2.x + 1) * 0.5 * fb_float_size.x)), (math.round((projected_v2.y + 1) * 0.5 * fb_float_size.y))}
+		space_v3 := Vec2f32{(math.round((projected_v3.x + 1) * 0.5 * fb_float_size.x)), (math.round((projected_v3.y + 1) * 0.5 * fb_float_size.y))}
 
-		if space_v1.x < 0 || space_v1.y < 0 || space_v1.x >= fb_fixed_size.x || space_v1.y >= fb_fixed_size.y {continue}
-		if space_v2.x < 0 || space_v2.y < 0 || space_v2.x >= fb_fixed_size.x || space_v2.y >= fb_fixed_size.y {continue}
-		if space_v3.x < 0 || space_v3.y < 0 || space_v3.x >= fb_fixed_size.x || space_v3.y >= fb_fixed_size.y {continue}
+		if space_v1.x < 0 || space_v1.y < 0 || space_v1.x >= fb_float_size.x || space_v1.y >= fb_float_size.y {continue}
+		if space_v2.x < 0 || space_v2.y < 0 || space_v2.x >= fb_float_size.x || space_v2.y >= fb_float_size.y {continue}
+		if space_v3.x < 0 || space_v3.y < 0 || space_v3.x >= fb_float_size.x || space_v3.y >= fb_float_size.y {continue}
 
 		min_x := min(space_v1.x, space_v2.x, space_v3.x)
 		min_y := min(space_v1.y, space_v2.y, space_v3.y)
 		max_x := max(space_v1.x, space_v2.x, space_v3.x)
 		max_y := max(space_v1.y, space_v2.y, space_v3.y)
 
-		for fx := min_x; fx < max_x; fx += Fixed(1 << FIXED_SCALE) {
-			for fy := min_y; fy < max_y; fy += Fixed(1 << FIXED_SCALE) {
-				sample_point_fixed := Vec2Fixed{fx + (1 << (FIXED_SCALE - 1)), fy + (1 << (FIXED_SCALE - 1))}
+		for fx := min_x; fx < max_x; fx += 1 {
+			for fy := min_y; fy < max_y; fy += 1 {
+				sample_point_fixed := Vec2f32{fx + 0.5, fy + 0.5}
 
-				weights_fixed, area_fixed := point_in_triangle(space_v1, space_v2, space_v3, sample_point_fixed) or_continue
-
-				weights_normalized := Vec3Fixed {
-					fixed_div(weights_fixed.x, area_fixed),
-					fixed_div(weights_fixed.y, area_fixed),
-					fixed_div(weights_fixed.z, area_fixed),
-				}
-
-				weights_float := Vec3f32{fixed_to_f32(weights_normalized.x), fixed_to_f32(weights_normalized.y), fixed_to_f32(weights_normalized.z)}
-
-				depth :=
-					fixed_mul_frac(fixed_div_frac(weights_fixed.x, area_fixed, 23), z_values_fixed.x, 23) +
-					fixed_mul_frac(fixed_div_frac(weights_fixed.y, area_fixed, 23), z_values_fixed.y, 23) +
-					fixed_mul_frac(fixed_div_frac(weights_fixed.z, area_fixed, 23), z_values_fixed.z, 23)
-
+				weights := point_in_triangle(space_v1, space_v2, space_v3, sample_point_fixed) or_continue
+				depth := weights.x * z_values_fixed.x + weights.y * z_values_fixed.y + weights.z * z_values_fixed.z
 
 				prev_depth := image_get_bytes(renderer.depthbuffer, sample_point_fixed)
 
-				if (cast(^Fixed)raw_data(prev_depth))^ <= depth {continue}
+				if (cast(^f32)raw_data(prev_depth))^ <= depth {continue}
 
 				for stride_i in 0 ..< vertex_out_stride {
 					v1_stride_data := v1_data[stride_i]
@@ -259,24 +196,24 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 
 					switch _ in v1_stride_data {
 					case f32:
-						v1_t := v1_stride_data.(f32) * weights_float.x
-						v2_t := v2_stride_data.(f32) * weights_float.y
-						v3_t := v3_stride_data.(f32) * weights_float.z
+						v1_t := v1_stride_data.(f32) * weights.x
+						v2_t := v2_stride_data.(f32) * weights.y
+						v3_t := v3_stride_data.(f32) * weights.z
 						frag_input_data[stride_i] = f32(v1_t + v2_t + v3_t)
 					case Vec2f32:
-						v1_t := v1_stride_data.(Vec2f32) * weights_float.x
-						v2_t := v2_stride_data.(Vec2f32) * weights_float.y
-						v3_t := v3_stride_data.(Vec2f32) * weights_float.z
+						v1_t := v1_stride_data.(Vec2f32) * weights.x
+						v2_t := v2_stride_data.(Vec2f32) * weights.y
+						v3_t := v3_stride_data.(Vec2f32) * weights.z
 						frag_input_data[stride_i] = Vec2f32(v1_t + v2_t + v3_t)
 					case Vec3f32:
-						v1_t := v1_stride_data.(Vec3f32) * weights_float.x
-						v2_t := v2_stride_data.(Vec3f32) * weights_float.y
-						v3_t := v3_stride_data.(Vec3f32) * weights_float.z
+						v1_t := v1_stride_data.(Vec3f32) * weights.x
+						v2_t := v2_stride_data.(Vec3f32) * weights.y
+						v3_t := v3_stride_data.(Vec3f32) * weights.z
 						frag_input_data[stride_i] = Vec3f32(v1_t + v2_t + v3_t)
 					case Vec4f32:
-						v1_t := v1_stride_data.(Vec4f32) * weights_float.x
-						v2_t := v2_stride_data.(Vec4f32) * weights_float.y
-						v3_t := v3_stride_data.(Vec4f32) * weights_float.z
+						v1_t := v1_stride_data.(Vec4f32) * weights.x
+						v2_t := v2_stride_data.(Vec4f32) * weights.y
+						v3_t := v3_stride_data.(Vec4f32) * weights.z
 						frag_input_data[stride_i] = Vec4f32(v1_t + v2_t + v3_t)
 					}
 				}
@@ -289,7 +226,7 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 	}
 }
 
-point_in_triangle :: #force_inline proc(p1, p2, p3: Vec2Fixed, sample_point: Vec2Fixed) -> (Vec3Fixed, Fixed, bool) #no_bounds_check {
+point_in_triangle :: #force_inline proc(p1, p2, p3: Vec2f32, sample_point: Vec2f32) -> (Vec3f32, bool) #no_bounds_check {
 	v1 := p1 - sample_point
 	v2 := p2 - sample_point
 	v3 := p3 - sample_point
@@ -298,17 +235,16 @@ point_in_triangle :: #force_inline proc(p1, p2, p3: Vec2Fixed, sample_point: Vec
 	e2 := p3 - p2
 	e3 := p1 - p3
 
-	t1 := fixed_cross(e1, -v1)
-	t2 := fixed_cross(e2, -v2)
-	t3 := fixed_cross(e3, -v3)
+	t1 := linalg.cross(e1, -v1)
+	t2 := linalg.cross(e2, -v2)
+	t3 := linalg.cross(e3, -v3)
 
-	area := fixed_cross(p2 - p1, p3 - p1)
+	area := linalg.cross(p2 - p1, p3 - p1)
 
-	w1 := fixed_cross(v2, v3)
-	w2 := fixed_cross(v3, v1)
-	w3 := fixed_cross(v1, v2)
+	w1 := linalg.cross(v2, v3)
+	w2 := linalg.cross(v3, v1)
+	w3 := linalg.cross(v1, v2)
 	if area <= 0 {
-
 		w1 = -w1
 		w2 = -w2
 		w3 = -w3
@@ -316,14 +252,12 @@ point_in_triangle :: #force_inline proc(p1, p2, p3: Vec2Fixed, sample_point: Vec
 		t2 = -t2
 		t3 = -t3
 		area = -area
-
 	}
 
-	is_top_left :: proc(e: Vec2Fixed) -> bool {
+	is_top_left :: proc(e: Vec2f32) -> bool {
 		return e.y > 0 || (e.y == 0 && e.x < 0)
 	}
 
-	return {w1, w2, w3},
-		area,
+	return {w1, w2, w3} / area,
 		(t1 > 0 || (t1 == 0 && is_top_left(e1))) && (t2 > 0 || (t2 == 0 && is_top_left(e2))) && (t3 > 0 || (t3 == 0 && is_top_left(e3)))
 }

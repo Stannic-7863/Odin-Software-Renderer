@@ -36,22 +36,7 @@ image_clear_bytes :: proc(image: Image, bytes: [4]u8) #no_bounds_check {
 	}
 }
 
-image_set_color :: proc {
-	image_set_color_float,
-	image_set_color_fixed,
-}
-
-image_set_bytes :: proc {
-	image_set_bytes_float,
-	image_set_bytes_fixed,
-}
-
-image_get_bytes :: proc {
-	image_get_bytes_float,
-	image_get_bytes_fixed,
-}
-
-image_set_color_float :: #force_inline proc(image: Image, pixel: Vec2f32, color: Vec4f32) #no_bounds_check {
+image_set_color :: #force_inline proc(image: Image, pixel: Vec2f32, color: Vec4f32) #no_bounds_check {
 	x := int(pixel.x)
 	y := int(pixel.y)
 
@@ -63,7 +48,7 @@ image_set_color_float :: #force_inline proc(image: Image, pixel: Vec2f32, color:
 	}
 }
 
-image_set_bytes_float :: #force_inline proc(image: Image, pixel: Vec2f32, bytes: [4]u8) #no_bounds_check {
+image_set_bytes :: #force_inline proc(image: Image, pixel: Vec2f32, bytes: [4]u8) #no_bounds_check {
 	x := int(pixel.x)
 	y := int(pixel.y)
 
@@ -74,41 +59,9 @@ image_set_bytes_float :: #force_inline proc(image: Image, pixel: Vec2f32, bytes:
 	}
 }
 
-image_set_color_fixed :: #force_inline proc(image: Image, pixel: Vec2Fixed, color: Vec4f32) #no_bounds_check {
-	x := int(pixel.x >> FIXED_SCALE)
-	y := int(pixel.y >> FIXED_SCALE)
-
-	index := (x + y * image.width) * image.channels
-	color_u8 := [4]u8{u8(255 * color.r), u8(255 * color.g), u8(255 * color.b), u8(255 * color.a)}
-
-	for i in 0 ..< image.channels {
-		image.data[index + i] = u8(color[i] * 255)
-	}
-}
-
-image_set_bytes_fixed :: #force_inline proc(image: Image, pixel: Vec2Fixed, bytes: [4]u8) #no_bounds_check {
-	x := int(pixel.x >> FIXED_SCALE)
-	y := int(pixel.y >> FIXED_SCALE)
-
-	index := (x + y * image.width) * image.channels
-
-	for i in 0 ..< image.channels {
-		image.data[index + i] = bytes[i]
-	}
-}
-
-image_get_bytes_float :: #force_inline proc(image: Image, pixel: Vec2f32) -> []u8 {
+image_get_bytes :: #force_inline proc(image: Image, pixel: Vec2f32) -> []u8 {
 	x := int(pixel.x)
 	y := int(pixel.y)
-
-	index := (x + y * image.width) * image.channels
-
-	return image.data[index:index + image.channels]
-}
-
-image_get_bytes_fixed :: #force_inline proc(image: Image, pixel: Vec2Fixed) -> []u8 {
-	x := int(pixel.x >> FIXED_SCALE)
-	y := int(pixel.y >> FIXED_SCALE)
 
 	index := (x + y * image.width) * image.channels
 

@@ -172,9 +172,8 @@ main :: proc() {
 
 			for i := 0; i < len(r.depthbuffer.data); i += 4 {
 				data := r.depthbuffer.data[i:i + 4]
-				fixed := (cast(^sr.Fixed)raw_data(data))^
-				f := (((f32(fixed) / f32((1 << 23)))) / 2) + 0.5
-				z_linear := (2 * 0.001 * 1000) / (1000 + 0.001 - f * (1000 - 0.001))
+				f := ((cast(^f32)raw_data(data))^ / 2) + 0.5
+				z_linear := (2 * 0.01 * 100) / (100 + 0.01 - f * (100 - 0.01))
 				u := u8(linalg.pow(f, 0.25) * 255)
 
 				r.depthbuffer.data[i] = u
