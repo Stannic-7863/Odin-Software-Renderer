@@ -2,13 +2,17 @@ package software_renderer
 
 import "base:intrinsics"
 import "base:runtime"
-import "core:math"
 import "core:math/linalg"
 import "core:slice"
+
+SUBPIXELS :: 4
 
 Vec2f32 :: [2]f32
 Vec3f32 :: [3]f32
 Vec4f32 :: [4]f32
+
+Vec2i32 :: [2]i32
+Vec3i32 :: [3]i32
 
 Shader_Data_Type :: union {
 	f32,
@@ -165,29 +169,72 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 		z_values_fixed := Vec3f32{projected_v1.z, projected_v2.z, projected_v3.z}
 
 		// screen space mapping
-		space_v1 := Vec2f32{(math.round((projected_v1.x + 1) * 0.5 * fb_float_size.x)), (math.round((projected_v1.y + 1) * 0.5 * fb_float_size.y))}
-		space_v2 := Vec2f32{(math.round((projected_v2.x + 1) * 0.5 * fb_float_size.x)), (math.round((projected_v2.y + 1) * 0.5 * fb_float_size.y))}
-		space_v3 := Vec2f32{(math.round((projected_v3.x + 1) * 0.5 * fb_float_size.x)), (math.round((projected_v3.y + 1) * 0.5 * fb_float_size.y))}
+		space_v1 := Vec2f32{((projected_v1.x + 1) * 0.5 * fb_float_size.x), ((projected_v1.y + 1) * 0.5 * fb_float_size.y)}
+		space_v2 := Vec2f32{((projected_v2.x + 1) * 0.5 * fb_float_size.x), ((projected_v2.y + 1) * 0.5 * fb_float_size.y)}
+		space_v3 := Vec2f32{((projected_v3.x + 1) * 0.5 * fb_float_size.x), ((projected_v3.y + 1) * 0.5 * fb_float_size.y)}
 
 		if space_v1.x < 0 || space_v1.y < 0 || space_v1.x >= fb_float_size.x || space_v1.y >= fb_float_size.y {continue}
 		if space_v2.x < 0 || space_v2.y < 0 || space_v2.x >= fb_float_size.x || space_v2.y >= fb_float_size.y {continue}
 		if space_v3.x < 0 || space_v3.y < 0 || space_v3.x >= fb_float_size.x || space_v3.y >= fb_float_size.y {continue}
 
-		min_x := min(space_v1.x, space_v2.x, space_v3.x)
-		min_y := min(space_v1.y, space_v2.y, space_v3.y)
-		max_x := max(space_v1.x, space_v2.x, space_v3.x)
-		max_y := max(space_v1.y, space_v2.y, space_v3.y)
+		space_v1_fixed := Vec2i32{i32(space_v1.x * (1 << SUBPIXELS)), i32(space_v1.y * (1 << SUBPIXELS))}
+		space_v2_fixed := Vec2i32{i32(space_v2.x * (1 << SUBPIXELS)), i32(space_v2.y * (1 << SUBPIXELS))}
+		space_v3_fixed := Vec2i32{i32(space_v3.x * (1 << SUBPIXELS)), i32(space_v3.y * (1 << SUBPIXELS))}
 
-		for fx := min_x; fx < max_x; fx += 1 {
-			for fy := min_y; fy < max_y; fy += 1 {
-				sample_point_fixed := Vec2f32{fx + 0.5, fy + 0.5}
+		min_x := min(space_v1_fixed.x, space_v2_fixed.x, space_v3_fixed.x)
+		min_y := min(space_v1_fixed.y, space_v2_fixed.y, space_v3_fixed.y)
+		max_x := max(space_v1_fixed.x, space_v2_fixed.x, space_v3_fixed.x)
+		max_y := max(space_v1_fixed.y, space_v2_fixed.y, space_v3_fixed.y)
 
-				weights := point_in_triangle(space_v1, space_v2, space_v3, sample_point_fixed) or_continue
+		sample_initial := Vec2i32 {
+			(min_x & ~(i32(1 << SUBPIXELS) - 1)) + (1 << (SUBPIXELS - 1)),
+			(min_y & ~(i32(1 << SUBPIXELS) - 1)) + (1 << (SUBPIXELS - 1)),
+		}
+
+		e1 := space_v3_fixed - space_v2_fixed
+		e2 := space_v1_fixed - space_v3_fixed
+		e3 := space_v2_fixed - space_v1_fixed
+
+		dx := Vec3i32{e1.y, e2.y, e3.y}
+		dy := Vec3i32{e1.x, e2.x, e3.x}
+
+		cross :: proc(a, b: Vec2i32) -> i32 {
+			return i32((i64(a.x) * i64(b.y) - i64(b.x) * i64(a.y)) >> SUBPIXELS)
+		}
+
+		top_left :: proc(e: Vec2i32) -> i32 {
+			return (e.y > 0 || (e.y == 0 && e.x < 0)) ? 1 : 0
+		}
+
+		weights_initial := Vec3i32{}
+		weights_initial.x = cross(e1, sample_initial - space_v2_fixed) - top_left(e1)
+		weights_initial.y = cross(e2, sample_initial - space_v3_fixed) - top_left(e2)
+		weights_initial.z = cross(e3, sample_initial - space_v1_fixed) - top_left(e3)
+
+		area := cross(e3, -e2)
+
+		if area <= 0 {
+			continue
+		}
+
+		area_f32 := f32(area)
+
+		weights_row := weights_initial
+
+		for fy := min_y >> SUBPIXELS; fy <= max_y >> SUBPIXELS; fy += 1 {
+			weights_col := weights_row
+			for fx := min_x >> SUBPIXELS; fx <= max_x >> SUBPIXELS; fx += 1 {
+				sp := Vec2i32{fx, fy}
+
+				defer weights_col -= dx
+
+				if ((weights_col.x | weights_col.y | weights_col.z) < 0) {continue}
+
+				weights := Vec3f32{f32(weights_col.x), f32(weights_col.y), f32(weights_col.z)} / area_f32
 				depth := weights.x * z_values_fixed.x + weights.y * z_values_fixed.y + weights.z * z_values_fixed.z
 
-				prev_depth := image_get_bytes(renderer.depthbuffer, sample_point_fixed)
-
-				if (cast(^f32)raw_data(prev_depth))^ <= depth {continue}
+				prev_depth := image_get_bytes(renderer.depthbuffer, sp)
+				if (cast(^f32)raw_data(prev_depth))^ < depth {continue}
 
 				for stride_i in 0 ..< vertex_out_stride {
 					v1_stride_data := v1_data[stride_i]
@@ -219,45 +266,33 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: int) {
 				}
 
 				out_color := pipeline.fragment_shader(frag_input_data, pipeline.fragment_userdata)
-				image_set_color(renderer.framebuffer, sample_point_fixed, out_color)
-				image_set_bytes(renderer.depthbuffer, sample_point_fixed, transmute([4]u8)depth)
+				image_set_color(renderer.framebuffer, sp, out_color)
+				image_set_bytes(renderer.depthbuffer, sp, transmute([4]u8)depth)
 			}
+			weights_row += dy
 		}
 	}
 }
 
 point_in_triangle :: #force_inline proc(p1, p2, p3: Vec2f32, sample_point: Vec2f32) -> (Vec3f32, bool) #no_bounds_check {
-	v1 := p1 - sample_point
-	v2 := p2 - sample_point
-	v3 := p3 - sample_point
+	e1 := p3 - p2
+	e2 := p1 - p3
+	e3 := p2 - p1
 
-	e1 := p2 - p1
-	e2 := p3 - p2
-	e3 := p1 - p3
+	t1 := linalg.cross(e1, sample_point - p2)
+	t2 := linalg.cross(e2, sample_point - p3)
+	t3 := linalg.cross(e3, sample_point - p1)
 
-	t1 := linalg.cross(e1, -v1)
-	t2 := linalg.cross(e2, -v2)
-	t3 := linalg.cross(e3, -v3)
+	area := t1 + t2 + t3
 
-	area := linalg.cross(p2 - p1, p3 - p1)
-
-	w1 := linalg.cross(v2, v3)
-	w2 := linalg.cross(v3, v1)
-	w3 := linalg.cross(v1, v2)
 	if area <= 0 {
-		w1 = -w1
-		w2 = -w2
-		w3 = -w3
-		t1 = -t1
-		t2 = -t2
-		t3 = -t3
-		area = -area
+		return 0, false
 	}
 
 	is_top_left :: proc(e: Vec2f32) -> bool {
 		return e.y > 0 || (e.y == 0 && e.x < 0)
 	}
 
-	return {w1, w2, w3} / area,
+	return {t1, t2, t3} / area,
 		(t1 > 0 || (t1 == 0 && is_top_left(e1))) && (t2 > 0 || (t2 == 0 && is_top_left(e2))) && (t3 > 0 || (t3 == 0 && is_top_left(e3)))
 }

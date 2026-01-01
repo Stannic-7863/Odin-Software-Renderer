@@ -6,6 +6,7 @@ import "core:math/linalg"
 import "core:prof/spall"
 import "core:slice"
 import "core:sync"
+import "vendor:zlib"
 
 import rl "vendor:raylib"
 
@@ -103,7 +104,7 @@ main :: proc() {
 	context.logger = log.create_console_logger(opt = {.Level})
 	defer log.destroy_console_logger(context.logger)
 
-	width, height := 200, 200
+	width, height := 300, 300
 
 	r := sr.create_renderer(width, height, context.allocator)
 
@@ -124,7 +125,6 @@ main :: proc() {
 	rl.InitWindow(i32(width * 2), i32(height), "Window")
 	defer rl.CloseWindow()
 
-	rl.SetTargetFPS(60)
 
 	framebuffer_texture := rl.LoadTextureFromImage(
 		{width = cast(i32)width, height = cast(i32)height, data = raw_data(r.framebuffer.data), format = .UNCOMPRESSED_R8G8B8A8, mipmaps = 1},
@@ -133,7 +133,6 @@ main :: proc() {
 	depthbuffer_texture := rl.LoadTextureFromImage(
 		{width = cast(i32)width, height = cast(i32)height, data = raw_data(r.depthbuffer.data), format = .UNCOMPRESSED_R8G8B8A8, mipmaps = 1},
 	)
-
 
 	frametime: f32
 
@@ -145,10 +144,10 @@ main :: proc() {
 	camera_right := linalg.cross(camera_front, camera_up)
 
 	for !rl.WindowShouldClose() {
-		mats.perspective = linalg.matrix4_perspective_f32(linalg.PI / 2.5, f32(width / height), 0.001, 1000, true)
+		mats.perspective = linalg.matrix4_perspective_f32(linalg.PI / 2.5, f32(width / height), 0.01, 100, true)
 		mats.model =
-			linalg.matrix4_translate_f32({0, 0, -2}) *
-			linalg.matrix4_scale_f32(1) *
+			linalg.matrix4_translate_f32({0, 0, -8}) *
+			linalg.matrix4_scale_f32(5) *
 			linalg.matrix4_rotate_f32(frametime, {0, 1, 1}) *
 			linalg.MATRIX4F32_IDENTITY
 		mats.camera = linalg.matrix4_look_at_f32(camera_position, camera_position - camera_front, camera_up)
@@ -172,9 +171,9 @@ main :: proc() {
 
 			for i := 0; i < len(r.depthbuffer.data); i += 4 {
 				data := r.depthbuffer.data[i:i + 4]
-				f := ((cast(^f32)raw_data(data))^ / 2) + 0.5
+				f := ((cast(^f32)raw_data(data))^ * 0.5) + 0.5
 				z_linear := (2 * 0.01 * 100) / (100 + 0.01 - f * (100 - 0.01))
-				u := u8(linalg.pow(f, 0.25) * 255)
+				u := u8(linalg.pow(z_linear, 0.2) * 255)
 
 				r.depthbuffer.data[i] = u
 				r.depthbuffer.data[i + 1] = u

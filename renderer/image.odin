@@ -8,8 +8,8 @@ import "core:os/os2"
 
 Image :: struct {
 	width, height: int,
-	data:          []byte,
 	channels:      int,
+	data:          []byte,
 	alllocator:    runtime.Allocator,
 }
 
@@ -36,7 +36,7 @@ image_clear_bytes :: proc(image: Image, bytes: [4]u8) #no_bounds_check {
 	}
 }
 
-image_set_color :: #force_inline proc(image: Image, pixel: Vec2f32, color: Vec4f32) #no_bounds_check {
+image_set_color :: #force_inline proc(image: Image, pixel: Vec2i32, color: Vec4f32) #no_bounds_check {
 	x := int(pixel.x)
 	y := int(pixel.y)
 
@@ -48,7 +48,7 @@ image_set_color :: #force_inline proc(image: Image, pixel: Vec2f32, color: Vec4f
 	}
 }
 
-image_set_bytes :: #force_inline proc(image: Image, pixel: Vec2f32, bytes: [4]u8) #no_bounds_check {
+image_set_bytes :: #force_inline proc(image: Image, pixel: Vec2i32, bytes: [4]u8) #no_bounds_check {
 	x := int(pixel.x)
 	y := int(pixel.y)
 
@@ -59,7 +59,7 @@ image_set_bytes :: #force_inline proc(image: Image, pixel: Vec2f32, bytes: [4]u8
 	}
 }
 
-image_get_bytes :: #force_inline proc(image: Image, pixel: Vec2f32) -> []u8 {
+image_get_bytes :: #force_inline proc(image: Image, pixel: Vec2i32) -> []u8 {
 	x := int(pixel.x)
 	y := int(pixel.y)
 
