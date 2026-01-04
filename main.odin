@@ -18,19 +18,14 @@ Vertex :: struct {
 
 phi := f32(1.6180339887498948482)
 icosa_vertices := []Vertex {
-	// (0, ±1, ±φ)
 	{sr.Vec3f32{0, 1, phi}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{0, -1, phi}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{0, 1, -phi}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{0, -1, -phi}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
-
-	// (±1, ±φ, 0)
 	{sr.Vec3f32{1, phi, 0}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{-1, phi, 0}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{1, -phi, 0}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{-1, -phi, 0}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
-
-	// (±φ, 0, ±1)
 	{sr.Vec3f32{phi, 0, 1}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{-phi, 0, 1}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
 	{sr.Vec3f32{phi, 0, -1}, sr.Vec3f32{0, 0, 0}, sr.Vec2f32{0, 0}},
@@ -120,7 +115,7 @@ Mats :: struct {
 	camera:      matrix[4, 4]f32,
 }
 
-basic_vertex_shader :: proc(input: []u8, userdata: rawptr, io: ^sr.Buffer) -> sr.Vec4f32 #no_bounds_check {
+basic_vertex_shader :: proc(info: sr.Vert_Info, input: []u8, userdata: rawptr, io: ^sr.Buffer) -> sr.Vec4f32 #no_bounds_check {
 	v := (cast(^Vertex)&input[0])^
 	position := v.pos
 	color := v.col
@@ -134,28 +129,35 @@ basic_vertex_shader :: proc(input: []u8, userdata: rawptr, io: ^sr.Buffer) -> sr
 	return mats.perspective * mats.camera * mats.model * sr.Vec4f32{position.x, position.y, position.z, 1}
 }
 
-basic_frag_shader :: proc(input: []u8, samplers: []sr.Sampler, userdata: rawptr) -> sr.Vec4f32 #no_bounds_check {
+basic_frag_shader :: proc(info: sr.Frag_Info, input: []u8, samplers: []sr.Sampler, userdata: rawptr) -> sr.Vec4f32 #no_bounds_check {
 	color := (cast(^sr.Vec3f32)&input[0])^
 	uv := (cast(^sr.Vec2f32)&input[12])^
 
 	sc := sr.sample_color(samplers[0], uv)
 
-	return {sc.r, sc.g, sc.g, 1}
-	// return {color.r * 0.5 + 0.5, color.g * 0.5 + 0.5, color.b * 0.5 + 0.5, 1}
+	if info.frag_coord.x > (543 / 2 + 543 / 6 + info.frag_coord.y / 10) {
+		return {sc.r, sc.g, sc.g, 1}
+	} else if info.frag_coord.x > 534 / 3 + info.frag_coord.y / 10 {
+		return {color.r * 0.5 + 0.5, color.g * 0.5 + 0.5, color.b * 0.5 + 0.5, 1}
+	} else {
+		return {uv.x, uv.y, 0, 1}
+	}
+	return {0, 0, 0, 1}
 }
 
 main :: proc() {
+
+	width, height := ((600 * 16) / 9) / 2 + 1, 600 / 2
+
 	context.logger = log.create_console_logger(opt = {.Level})
 	defer log.destroy_console_logger(context.logger)
-
-	width, height := 500, 400
 
 	r := sr.create_renderer(width, height, context.allocator)
 
 	v_buf_index := sr.create_buffer(&r)
 	i_buf_index := sr.create_buffer(&r)
 
-	verts, indicies := load_obj("./assets/models/stuff.obj")
+	verts, indicies := load_obj("./assets/models/lots of objects.obj")
 
 	defer delete(verts)
 	defer delete(indicies)
@@ -201,6 +203,8 @@ main :: proc() {
 	rl.InitWindow(i32(width), i32(height), "Window")
 	defer rl.CloseWindow()
 	rl.DisableCursor()
+
+	rl.SetTargetFPS(60)
 
 	framebuffer_texture := rl.LoadTextureFromImage(
 		{

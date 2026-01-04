@@ -22,8 +22,8 @@ Vec3i32 :: [3]i32
 Vec2int :: [2]int
 Vec4int :: [4]int
 
-Vertex_Shader :: proc(input: []u8, userdata: rawptr, io: ^Buffer) -> Vec4f32
-Fragment_Shader :: proc(input: []u8, samplers: []Sampler, userdata: rawptr) -> Vec4f32
+Vertex_Shader :: proc(info: Vert_Info, input: []u8, userdata: rawptr, io: ^Buffer) -> Vec4f32
+Fragment_Shader :: proc(info: Frag_Info, input: []u8, samplers: []Sampler, userdata: rawptr) -> Vec4f32
 
 Buffer :: [dynamic]byte
 
@@ -50,6 +50,14 @@ Renderer :: struct {
 	samplers:        [dynamic]Sampler,
 	shader_samplers: [dynamic]SamplerIndex,
 	allocator:       runtime.Allocator,
+}
+
+Frag_Info :: struct {
+	frag_coord: Vec4f32,
+}
+
+Vert_Info :: struct {
+	vertex_id: int,
 }
 
 create_renderer :: proc(width, height: int, allocator: runtime.Allocator) -> Renderer {
@@ -196,10 +204,10 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: PipelineIndex) {
 			vertex_2_input_data := raw_vert_buf^[vertex_index_2:vertex_index_2 + pipeline.stride_size]
 			vertex_3_input_data := raw_vert_buf^[vertex_index_3:vertex_index_3 + pipeline.stride_size]
 
-			verts[0] = pipeline.vertex_shader(vertex_1_input_data, pipeline.vertex_userdata, raw_io_buf)
+			verts[0] = pipeline.vertex_shader({vertex_id = index_buf[index_i]}, vertex_1_input_data, pipeline.vertex_userdata, raw_io_buf)
 			vertex_out_stride = len(raw_io_buf^) - sampler_size
-			verts[1] = pipeline.vertex_shader(vertex_2_input_data, pipeline.vertex_userdata, raw_io_buf)
-			verts[2] = pipeline.vertex_shader(vertex_3_input_data, pipeline.vertex_userdata, raw_io_buf)
+			verts[1] = pipeline.vertex_shader({vertex_id = index_buf[index_i + 1]}, vertex_2_input_data, pipeline.vertex_userdata, raw_io_buf)
+			verts[2] = pipeline.vertex_shader({vertex_id = index_buf[index_i + 2]}, vertex_3_input_data, pipeline.vertex_userdata, raw_io_buf)
 
 			vertex_out_end = len(raw_io_buf^) - sampler_size
 		}
@@ -419,7 +427,12 @@ pipeline_process :: proc(renderer: ^Renderer, pipeline_index: PipelineIndex) {
 					}
 
 
-					out_color := pipeline.fragment_shader(frag_input_data, samplers, pipeline.fragment_userdata)
+					out_color := pipeline.fragment_shader(
+						{frag_coord = {f32(fx), f32(fy), depth, w_inv}},
+						frag_input_data,
+						samplers,
+						pipeline.fragment_userdata,
+					)
 					image_set_color(framebuffer, sp, out_color)
 					image_set_bytes(depthbuffer, sp, transmute([4]u8)depth)
 				}
