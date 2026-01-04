@@ -10,16 +10,51 @@ Image :: struct {
 	width, height: int,
 	channels:      int,
 	data:          []byte,
-	alllocator:    runtime.Allocator,
 }
 
-create_image :: proc(width: int, height: int, channels: int, allocator: runtime.Allocator) -> Image {
-	data := make([]byte, width * height * channels, allocator)
-	return {data = data, alllocator = allocator, width = width, height = height, channels = channels}
+Sampler :: struct {
+	target: ImageIndex,
+	image:  Image,
 }
 
-delete_image :: proc(image: Image) {
-	delete(image.data, image.alllocator)
+create_sampler :: proc(renderer: ^Renderer, image: ImageIndex) -> SamplerIndex {
+	index := len(renderer.samplers)
+	append(&renderer.samplers, Sampler{target = image})
+	return SamplerIndex(index)
+}
+
+sample_color :: proc(sampler: Sampler, uv: Vec2f32) -> Vec4f32 {
+	img := sampler.image
+
+	uv := uv
+	uv.x = min(1, uv.x)
+	uv.y = min(1, uv.y)
+	uv.x = max(0, uv.x)
+	uv.y = max(0, uv.y)
+
+	s := uv * {f32(img.width - 1), f32(img.height - 1)}
+	sample_loc := [2]int{int(s.x), int(s.y)}
+
+	index := (sample_loc.x + sample_loc.y * img.width) * img.channels
+	col := img.data[index:index + img.channels]
+
+	v4: Vec4f32
+	for c, i in col {
+		v4[i] = f32(c) / 255
+	}
+
+	return v4
+}
+
+create_image :: proc(renderer: ^Renderer, width: int, height: int, channels: int) -> ImageIndex {
+	data := make([]byte, width * height * channels, renderer.allocator)
+	index := len(renderer.images)
+	append(&renderer.images, Image{data = data, width = width, height = height, channels = channels})
+	return ImageIndex(index)
+}
+
+get_image :: proc(renderer: ^Renderer, index: ImageIndex) -> Image {
+	return renderer.images[index]
 }
 
 image_clear_color :: proc(image: Image, color: Vec4f32) #no_bounds_check {
